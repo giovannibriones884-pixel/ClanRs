@@ -1,0 +1,443 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CLAN RS</title>
+<style>
+*{box-sizing:border-box;font-family:Arial,sans-serif}
+body{background:#0b0b14;color:white;margin:0;padding:10px}
+h1{text-align:center;color:#a78bfa;font-size:23px}
+button,input,select,textarea{font-size:16px}
+.tabs{display:flex;gap:8px}
+.tabs button{flex:1;padding:13px;border:0;border-radius:12px;background:#1e1e30;color:white;font-weight:bold}
+.tabs button.active{background:#7c3aed}
+.card{background:#151525;border-radius:16px;padding:12px;margin-top:10px}
+input,select,textarea{width:100%;padding:12px;border:0;border-radius:10px;background:#22223a;color:white;margin:6px 0}
+.btn{width:100%;padding:12px;border:0;border-radius:12px;background:#7c3aed;color:white;font-weight:bold;margin-top:8px}
+.green{background:#16a34a}.red{background:#dc2626}.orange{background:#ea580c}.gray{background:#334155}.yellow{background:#eab308;color:black}
+.small{font-size:12px;color:#aaa}
+.row{display:flex;justify-content:space-between;gap:8px;background:#1d1d30;padding:9px;border-radius:8px;margin:5px 0}
+.row span{word-break:break-word}
+.sala{border:1px solid #444;padding:12px;border-radius:12px;margin-top:10px}
+.sala.llena{border:2px solid #22c55e;background:#102719}
+.contador{background:#7c3aed;padding:10px;border-radius:10px;text-align:center;font-weight:bold;margin:10px 0}
+.progress{height:10px;background:#333;border-radius:10px;overflow:hidden;margin:8px 0}
+.fill{height:100%;background:#22c55e}
+#avisoLlena{position:fixed;inset:0;background:#000e;display:none;z-index:99;align-items:center;justify-content:center;padding:20px}
+#avisoLlena>div{background:#151525;padding:24px;border-radius:20px;text-align:center;width:100%;max-width:400px}
+#avisoLlena h2{color:#22c55e;font-size:30px}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+
+<h1>🔥 CLAN RS 🔥</h1>
+
+<div class="tabs">
+<button id="t1" class="active" onclick="showTab(1)">🏆 RANKING</button>
+<button id="t2" onclick="showTab(2)">🎮 INTERNAS</button>
+</div>
+
+<!-- AVISO DE SALA LLENA -->
+<div id="avisoLlena">
+<div>
+<h2>🎉 ¡SALA LLENA!</h2>
+<p id="textoAviso">Se completaron los cupos.</p>
+<p>¡A jugar!</p>
+<button class="btn green" onclick="cerrarAviso()">ENTENDIDO</button>
+<button class="btn orange" onclick="whatsappSala()">📲 AVISAR POR WHATSAPP</button>
+</div>
+</div>
+
+<!-- RANKING -->
+<div id="m1" class="card">
+<h3>🏆 Ranking</h3>
+<div class="contador" id="contadorRanking">0 / 55 jugadores</div>
+<p class="small">Subí capturas para intentar reconocer nombres.</p>
+
+<input type="file" id="fotos" accept="image/*" multiple>
+<button class="btn" onclick="leerFotos()">📸 LEER CAPTURAS</button>
+<button class="btn red" onclick="limpiarRanking()">🗑️ BORRAR RANKING</button>
+<p id="estadoOCR" class="small"></p>
+<input id="buscador" placeholder="🔍 Buscar jugador..." oninput="renderRanking()">
+<div id="listaRanking"></div>
+<button class="btn green" onclick="copiarRanking()">📋 COPIAR RANKING</button>
+</div>
+
+<!-- INTERNAS -->
+<div id="m2" class="card hidden">
+<h3>🎮 Internas — Salas compartidas</h3>
+<p class="small">Los cupos se sincronizan cuando Firebase está conectado.</p>
+
+<div class="contador" id="estadoFirebase">⚠️ Firebase sin configurar</div>
+
+<button class="btn yellow" onclick="activarAvisos()">🔔 ACTIVAR AVISOS EN ESTE CELULAR</button>
+
+<input id="nombreJugador" placeholder="Tu nombre en el clan">
+<button class="btn green" onclick="guardarNombre()">GUARDAR MI NOMBRE</button>
+
+<div id="salas"></div>
+
+<hr>
+
+<div style="background:#2a1a00;border:1px solid #eab308;padding:10px;border-radius:12px;margin-top:12px">
+<h3>🔒 Crear sala (admin)</h3>
+<input id="organizador" placeholder="Organizador">
+<select id="cupos">
+<option value="4">4 cupos — 2v2</option>
+<option value="6">6 cupos</option>
+<option value="8" selected>8 cupos — 4v4</option>
+</select>
+<input id="codigoSala" placeholder="Código de sala (ej. RS123)">
+<textarea id="autorizados" placeholder="Jugadores autorizados separados por coma (opcional)" rows="2"></textarea>
+<input id="claveAdmin" type="password" placeholder="Clave admin">
+<button class="btn" onclick="crearSala()">➕ CREAR SALA</button>
+</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+
+<script type="module">
+// ============================================
+// FIREBASE
+// ============================================
+// Reemplazá estos valores por los de Firebase.
+// Si quedan vacíos, las salas funcionarán SOLO
+// en este dispositivo (modo local).
+// ============================================
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getDatabase, ref, onValue, set, update, remove, push } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+const firebaseConfig = {
+  apiKey: "PEGAR_API_KEY",
+  authDomain: "PEGAR_AUTH_DOMAIN",
+  databaseURL: "PEGAR_DATABASE_URL",
+  projectId: "PEGAR_PROJECT_ID",
+  appId: "PEGAR_APP_ID"
+};
+
+const ADMIN_PASSWORD = "RSADMIN";
+const MAX_RANKING = 55;
+
+let db = null;
+let firebaseOK = false;
+let rooms = {};
+let ranking = JSON.parse(localStorage.getItem("clanRS_ranking") || "[]");
+let myName = localStorage.getItem("clanRS_nombre") || "";
+let currentFullRoom = null;
+
+const configReady = !Object.values(firebaseConfig).some(v=>String(v).includes("PEGAR"));
+
+try {
+  if(configReady) {
+    const app = initializeApp(firebaseConfig);
+    db = getDatabase(app);
+    const auth = getAuth(app);
+
+    await signInAnonymously(auth);
+
+    firebaseOK = true;
+    document.getElementById("estadoFirebase").textContent = "🟢 Firebase conectado";
+    onValue(ref(db,"rooms"),snapshot=>{
+      rooms = snapshot.val() || {};
+      renderRooms();
+    });
+  }
+} catch(e) {
+  console.error("Firebase:",e);
+  document.getElementById("estadoFirebase").textContent = "❌ Error conectando Firebase";
+}
+
+// ============================================
+// PESTAÑAS
+// ============================================
+window.showTab = function(n){
+  document.getElementById("m1").classList.toggle("hidden",n!==1);
+  document.getElementById("m2").classList.toggle("hidden",n!==2);
+  document.getElementById("t1").classList.toggle("active",n===1);
+  document.getElementById("t2").classList.toggle("active",n===2);
+};
+
+// ============================================
+// NOMBRE DEL JUGADOR
+// ============================================
+window.guardarNombre = function(){
+  const n=document.getElementById("nombreJugador").value.trim();
+  if(!n){alert("Escribí tu nombre");return}
+  myName=n;
+  localStorage.setItem("clanRS_nombre",n);
+  alert("Nombre guardado");
+  renderRooms();
+};
+document.getElementById("nombreJugador").value=myName;
+
+// ============================================
+// RANKING
+// ============================================
+function saveRanking(){
+  localStorage.setItem("clanRS_ranking",JSON.stringify(ranking));
+}
+
+window.renderRanking=function(){
+  const q=document.getElementById("buscador").value.toLowerCase();
+  const list=document.getElementById("listaRanking");
+  list.innerHTML="";
+  document.getElementById("contadorRanking").textContent=ranking.length+" / "+MAX_RANKING+" jugadores";
+
+  ranking.filter(n=>n.toLowerCase().includes(q)).forEach((n,i)=>{
+    const div=document.createElement("div");
+    div.className="row";
+    const span=document.createElement("span");
+    span.textContent=(i+1)+". "+n;
+    div.appendChild(span);
+    list.appendChild(div);
+  });
+};
+
+window.limpiarRanking=function(){
+  if(!confirm("¿Borrar todo el ranking?"))return;
+  ranking=[];
+  saveRanking();
+  renderRanking();
+};
+
+window.copiarRanking=function(){
+  const text="🏆 RANKING CLAN RS 🏆\n\n"+ranking.map((n,i)=>(i+1)+". "+n).join("\n");
+  navigator.clipboard.writeText(text).then(()=>alert("Ranking copiado"));
+};
+
+window.leerFotos=async function(){
+  const files=document.getElementById("fotos").files;
+  const status=document.getElementById("estadoOCR");
+  if(!files.length){alert("Elegí capturas primero");return}
+  if(!window.Tesseract){alert("No se pudo cargar el OCR");return}
+
+  status.textContent="⏳ Leyendo capturas...";
+  try{
+    for(const file of files){
+      const result=await Tesseract.recognize(file,"eng+spa");
+      const lines=result.data.text.split(/\n/).map(x=>x.trim()).filter(Boolean);
+
+      for(let line of lines){
+        line=line.replace(/[^a-zA-Z0-9_.-]/g," ").trim();
+        if(line.length<3||line.length>24)continue;
+        if(/rank|ranking|player|players|score|level|kills/i.test(line))continue;
+        if(!ranking.some(n=>n.toLowerCase()===line.toLowerCase())){
+          if(ranking.length>=MAX_RANKING)break;
+          ranking.push(line);
+        }
+      }
+    }
+    saveRanking();
+    renderRanking();
+    status.textContent="✅ Lectura terminada. Revisá los nombres.";
+  }catch(e){
+    console.error(e);
+    status.textContent="❌ Error al leer las imágenes";
+  }
+};
+
+// ============================================
+// SALAS
+// ============================================
+function roomRef(id){return ref(db,"rooms/"+id)}
+
+window.crearSala=async function(){
+  const org=document.getElementById("organizador").value.trim();
+  const code=document.getElementById("codigoSala").value.trim().toUpperCase();
+  const slots=Number(document.getElementById("cupos").value);
+  const allowed=document.getElementById("autorizados").value.split(",").map(x=>x.trim()).filter(Boolean);
+  const pass=document.getElementById("claveAdmin").value;
+
+  if(pass!==ADMIN_PASSWORD){alert("Clave de administrador incorrecta");return}
+  if(!org||!code){alert("Completá organizador y código");return}
+
+  const newRoom={
+    code,
+    organizer:org,
+    slots,
+    players:{},
+    allowed,
+    created:Date.now()
+  };
+
+  if(firebaseOK){
+    if(rooms[code]){alert("Ya existe una sala con ese código");return}
+    await set(roomRef(code),newRoom);
+  }else{
+    if(rooms[code]){alert("Ya existe una sala con ese código");return}
+    rooms[code]=newRoom;
+    localStorage.setItem("clanRS_rooms",JSON.stringify(rooms));
+    renderRooms();
+  }
+
+  document.getElementById("codigoSala").value="";
+  document.getElementById("claveAdmin").value="";
+  alert("Sala creada");
+};
+
+window.unirse=async function(code){
+  if(!myName){alert("Primero guardá tu nombre");return}
+  const room=rooms[code];
+  if(!room){alert("Sala no encontrada");return}
+  if(room.players && room.players[myName]){alert("Ya estás anotado");return}
+  if(Object.keys(room.players||{}).length>=room.slots){alert("Sala llena");return}
+  if(room.allowed && room.allowed.length && !room.allowed.some(n=>n.toLowerCase()===myName.toLowerCase())){
+    alert("No estás en la lista autorizada");
+    return;
+  }
+
+  if(firebaseOK){
+    const players={...(room.players||{}),[myName]:true};
+    await update(roomRef(code),{players});
+  }else{
+    room.players=room.players||{};
+    room.players[myName]=true;
+    rooms[code]=room;
+    localStorage.setItem("clanRS_rooms",JSON.stringify(rooms));
+    renderRooms();
+  }
+};
+
+window.salirSala=async function(code){
+  const room=rooms[code];
+  if(!room||!room.players||!room.players[myName])return;
+  const players={...room.players};
+  delete players[myName];
+  if(firebaseOK)await update(roomRef(code),{players});
+  else{
+    room.players=players;
+    rooms[code]=room;
+    localStorage.setItem("clanRS_rooms",JSON.stringify(rooms));
+    renderRooms();
+  }
+};
+
+window.borrarSala=async function(code){
+  const pass=prompt("Clave de administrador");
+  if(pass!==ADMIN_PASSWORD){alert("Clave incorrecta");return}
+  if(firebaseOK)await remove(roomRef(code));
+  else{
+    delete rooms[code];
+    localStorage.setItem("clanRS_rooms",JSON.stringify(rooms));
+    renderRooms();
+  }
+};
+
+window.renderRooms=function(){
+  const container=document.getElementById("salas");
+  if(!container)return;
+  container.innerHTML="";
+  const keys=Object.keys(rooms);
+
+  if(!keys.length){
+    container.innerHTML='<p class="small">Todavía no hay salas creadas.</p>';
+    return;
+  }
+
+  keys.forEach(code=>{
+    const r=rooms[code];
+    const players=Object.keys(r.players||{});
+    const count=players.length;
+    const full=count>=r.slots;
+
+    const div=document.createElement("div");
+    div.className="sala"+(full?" llena":"");
+    const title=document.createElement("h3");
+    title.textContent="🎮 "+r.code;
+    div.appendChild(title);
+
+    const info=document.createElement("p");
+    info.textContent="Organiza: "+r.organizer+" · "+count+"/"+r.slots;
+    div.appendChild(info);
+
+    const progress=document.createElement("div");
+    progress.className="progress";
+    const fill=document.createElement("div");
+    fill.className="fill";
+    fill.style.width=Math.min(100,count/r.slots*100)+"%";
+    progress.appendChild(fill);
+    div.appendChild(progress);
+
+    const playerText=document.createElement("p");
+    playerText.className="small";
+    playerText.textContent=players.length?players.join(", "):"Sin jugadores todavía";
+    div.appendChild(playerText);
+
+    const status=document.createElement("p");
+    status.textContent=full?"🟢 SALA LLENA":"🟡 BUSCANDO JUGADORES";
+    div.appendChild(status);
+
+    const join=document.createElement("button");
+    join.className="btn green";
+    join.textContent="➕ UNIRME";
+    join.disabled=full;
+    join.onclick=()=>unirse(code);
+    div.appendChild(join);
+
+    const leave=document.createElement("button");
+    leave.className="btn gray";
+    leave.textContent="SALIR DE LA SALA";
+    leave.onclick=()=>salirSala(code);
+    div.appendChild(leave);
+
+    const del=document.createElement("button");
+    del.className="btn red";
+    del.textContent="🗑️ ELIMINAR SALA";
+    del.onclick=()=>borrarSala(code);
+    div.appendChild(del);
+
+    container.appendChild(div);
+
+    if(full && !r._notified){
+      r._notified=true;
+      currentFullRoom=code;
+      document.getElementById("textoAviso").textContent="La sala "+code+" se llenó ("+count+"/"+r.slots+")";
+      document.getElementById("avisoLlena").style.display="flex";
+    }
+  });
+};
+
+// ============================================
+// AVISOS
+// ============================================
+window.activarAvisos=async function(){
+  if(!("Notification" in window)){alert("Este navegador no admite notificaciones");return}
+  const p=await Notification.requestPermission();
+  if(p==="granted"){
+    new Notification("CLAN RS",{body:"Avisos activados en este dispositivo"});
+    alert("Permiso concedido. Esto todavía no activa notificaciones remotas.");
+  }else{
+    alert("No se concedió permiso para notificaciones.");
+  }
+};
+
+window.cerrarAviso=function(){
+  document.getElementById("avisoLlena").style.display="none";
+};
+
+window.whatsappSala=function(){
+  const code=currentFullRoom;
+  if(!code||!rooms[code])return;
+  const r=rooms[code];
+  const players=Object.keys(r.players||{});
+  const text="🎉 ¡SALA LLENA! 🎉\n"+code+"\n"+players.join("\n")+"\n¡A jugar!";
+  window.open("https://wa.me/?text="+encodeURIComponent(text),"_blank");
+};
+
+// ============================================
+// MODO LOCAL SI FIREBASE NO ESTÁ CONFIGURADO
+// ============================================
+if(!firebaseOK){
+  rooms=JSON.parse(localStorage.getItem("clanRS_rooms")||"{}");
+  document.getElementById("estadoFirebase").textContent="🟠 Modo local: no sincroniza con otros celulares";
+}
+renderRanking();
+renderRooms();
+</script>
+</body>
+</html>
