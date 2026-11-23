@@ -366,9 +366,10 @@ window.showTab = function(n){
      return;
    }
 
-   if (!window.Tesseract) {
-     alert("No se cargó el OCR");
-     return;
+   status.textContent =
+  "✅ Proceso terminado. Leídas: " + correctas +
+  " | Omitidas: " + omitidas +
+  " | Errores: " + fallidas;
    }
 
    const boton = document.querySelector('button[onclick="leerFotos()"]');
