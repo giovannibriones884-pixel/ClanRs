@@ -58,7 +58,8 @@ input,select,textarea{width:100%;padding:12px;border:0;border-radius:10px;backgr
 <p class="small">Subí capturas para intentar reconocer nombres.</p>
 
 <input type="file" id="fotos" accept="image/*" multiple>
-<button class="btn" onclick="leerFotos()">📸 LEER CAPTURAS</button>
+<button class="btn" onclick="leerFotos(status.textContent =
+  `✅ Proceso terminado. Leídas: ${correctas} | Omitidas: ${omitidas} | Errores: ${fallidas}`;)">📸 LEER CAPTURAS</button>
 <button class="btn red" onclick="limpiarRanking()">🗑️ BORRAR RANKING</button>
 <p id="estadoOCR" class="small"></p>
 <input id="buscador" placeholder="🔍 Buscar jugador..." oninput="renderRanking()">
